@@ -55,30 +55,6 @@ bool HardwareEndPointDetector::init(uint32_t samprate, uint8_t channels)
 		return false;
 	}
 
-	result = start_stream_in_device_process(mCard, mDevice);
-	if (result != AUDIO_MANAGER_SUCCESS) {
-		meddbg("Error: start_stream_in_device_process(%d, %d) failed!\n", mCard, mDevice);
-		return false;
-	}
-
-	pthread_t epd_thread;
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, 1024);
-	int ret = pthread_create(&epd_thread, &attr, static_cast<pthread_startroutine_t>(HardwareEndPointDetector::endPointDetectThread), this);
-	if (ret != 0) {
-		meddbg("Fail to create worker thread, return value : %d\n", ret);
-		return false;
-	}
-	pthread_setname_np(epd_thread, "epd_thread");
-
-	void *thread_ret = 0;
-
-	medvdbg("### pthread join for EPD\n");
-	pthread_join(epd_thread, &thread_ret);
-
-	medvdbg("### pthread return for EPD: %d\n", thread_ret);
-
 	return true;
 }
 
@@ -93,41 +69,44 @@ void HardwareEndPointDetector::deinit()
 	}
 }
 
-void *HardwareEndPointDetector::endPointDetectThread(void *param)
+bool HardwareEndPointDetector::startEndPointDetect(uint32_t timeout)
 {
-	HardwareEndPointDetector *detector = (HardwareEndPointDetector *)param;
-
-	while (true) {
-		if (detector->processEPDFrame(nullptr, 0)) {
-			medvdbg("#### EPD DETECTED!! ####\n");
-			break;
-		}
-		usleep(30 * 1000);
-	}
-
-	unregister_stream_in_device_process(detector->mCard, detector->mDevice);
-
-	return NULL;
-}
-
-bool HardwareEndPointDetector::processEPDFrame(short *sample, int numSample)
-{
+	bool ret = false;
 	audio_manager_result_t result;
-	uint16_t msgId;
 
-	result = get_device_process_handler_message(mCard, mDevice, &msgId);
-
-	if (result == AUDIO_MANAGER_SUCCESS) {
-		if (msgId == AUDIO_DEVICE_SPEECH_DETECT_EPD) {
-			stop_stream_in_device_process(mCard, mDevice);
-			return true;
-		}
-	} else if (result == AUDIO_MANAGER_INVALID_DEVICE) {
-		meddbg("Error: device doesn't support it!!!\n");
+	result = start_stream_in_device_process_type(mCard, mDevice, AUDIO_DEVICE_SPEECH_DETECT_EPD);
+	if (result != AUDIO_MANAGER_SUCCESS) {
+		meddbg("Error: start_stream_in_device_process(%d, %d) failed!\n", mCard, mDevice);
 		return false;
 	}
 
-	return false;
+	struct timespec curtime;
+	struct timespec waketime;
+	clock_gettime(CLOCK_REALTIME, &waketime);
+	waketime.tv_sec += timeout;
+
+	do {
+		uint16_t msgId;
+		result = get_device_process_handler_message(mCard, mDevice, &msgId);
+
+		if (result == AUDIO_MANAGER_SUCCESS) {
+			if (msgId == AUDIO_DEVICE_SPEECH_DETECT_EPD) {
+				medvdbg("#### EPD DETECTED!! ####\n");
+				ret = true;
+				break;
+			}
+		} else if (result == AUDIO_MANAGER_INVALID_DEVICE) {
+			meddbg("Error: device doesn't support it!!!\n");
+			break;
+		}
+
+		pthread_yield();
+		clock_gettime(CLOCK_REALTIME, &curtime);
+	} while ((curtime.tv_sec < waketime.tv_sec) ||
+			 (curtime.tv_sec == waketime.tv_sec && curtime.tv_nsec <= waketime.tv_nsec));
+
+	stop_stream_in_device_process_type(mCard, mDevice, AUDIO_DEVICE_SPEECH_DETECT_EPD);
+	return ret;
 }
 
 } // namespace voice

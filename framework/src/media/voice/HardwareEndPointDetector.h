@@ -33,10 +33,7 @@ public:
 public:
 	bool init(uint32_t samprate, uint8_t channels) override;
 	void deinit() override;
-	bool processEPDFrame(short *sample, int numSample) override;
-
-private:
-	static  void *endPointDetectThread(void *param);
+	bool startEndPointDetect(uint32_t timeout) override;
 
 private:
 	int mCard;

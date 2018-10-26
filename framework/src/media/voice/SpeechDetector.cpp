@@ -38,11 +38,10 @@ public:
 	SpeechDetectorImpl() = default;
 	bool initKeywordDetect(uint32_t samprate, uint8_t channels) override;
 	bool initEndPointDetect(uint32_t samprate, uint8_t channels) override;
-	void deinitKeywordDetect() override;
-	void deinitEndPointDetect() override;
-	void setEndPointDetectedDelegate(OnEndPointDetectedCallback onEndPointDetected) override;
+	bool deinitKeywordDetect() override;
+	bool deinitEndPointDetect() override;
 	bool startKeywordDetect(uint32_t timeout) override;
-	bool processEPDFrame(short *sample, int numSample) override;
+	bool startEndPointDetect(uint32_t timeout) override;
 
 private:
 	std::shared_ptr<KeywordDetector> mKeywordDetector;
@@ -57,6 +56,11 @@ SpeechDetector *SpeechDetector::instance()
 
 bool SpeechDetectorImpl::initKeywordDetect(uint32_t samprate, uint8_t channels)
 {
+	if (samprate == 0 || channels == 0) {
+		meddbg("%s[line : %d] fail : invalid parameter. samprate : %u, channels : %u\n", __func__, __LINE__, samprate, channels);
+		return false;
+	}
+
 	int card = -1;
 	int device = -1;
 
@@ -85,6 +89,11 @@ bool SpeechDetectorImpl::initKeywordDetect(uint32_t samprate, uint8_t channels)
 
 bool SpeechDetectorImpl::initEndPointDetect(uint32_t samprate, uint8_t channels)
 {
+	if (samprate == 0 || channels == 0) {
+		meddbg("%s[line : %d] fail : invalid parameter. samprate : %u, channels : %u\n", __func__, __LINE__, samprate, channels);
+		return false;
+	}
+
 	int card = -1;
 	int device = -1;
 
@@ -110,38 +119,48 @@ bool SpeechDetectorImpl::initEndPointDetect(uint32_t samprate, uint8_t channels)
 	return mEndPointDetector->init(samprate, channels);
 }
 
-void SpeechDetectorImpl::deinitKeywordDetect()
+bool SpeechDetectorImpl::deinitKeywordDetect()
 {
 	if (mKeywordDetector) {
 		mKeywordDetector->deinit();
 		mKeywordDetector = nullptr;
+		return true;
+	} else {
+		meddbg("Nothing to deinit\n");
+		return false;
 	}
 }
 
-void SpeechDetectorImpl::deinitEndPointDetect()
+bool SpeechDetectorImpl::deinitEndPointDetect()
 {
 	if (mEndPointDetector) {
 		mEndPointDetector->deinit();
 		mEndPointDetector = nullptr;
+		return true;
+	} else {
+		meddbg("Nothing to deinit\n");
+		return false;
 	}
-}
-
-void SpeechDetectorImpl::setEndPointDetectedDelegate(OnEndPointDetectedCallback onEndPointDetected)
-{
-	assert(mEndPointDetector);
-	mEndPointDetector->setEndPointDetectedDelegate(onEndPointDetected);
 }
 
 bool SpeechDetectorImpl::startKeywordDetect(uint32_t timeout)
 {
-	assert(mKeywordDetector);
+	if (mKeywordDetector == nullptr) {
+		meddbg("KeywordDetector is not init\n");
+		return false;
+	}
+
 	return mKeywordDetector->startKeywordDetect(timeout);
 }
 
-bool SpeechDetectorImpl::processEPDFrame(short *sample, int numSample)
+bool SpeechDetectorImpl::startEndPointDetect(uint32_t timeout)
 {
-	assert(mEndPointDetector);
-	return mEndPointDetector->processEPDFrame(sample, numSample);
+	if (mEndPointDetector == nullptr) {
+		meddbg("EndPointDetector is not init\n");
+		return false;
+	}
+
+	return mEndPointDetector->startEndPointDetect(timeout);
 }
 
 } // namespace voice
